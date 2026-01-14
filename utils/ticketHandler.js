@@ -628,9 +628,9 @@ export async function closeTicket(interaction, ticket, guildConfig) {
       const html = await generateTranscript(messages, ticket, interaction.guild, participants);
       transcriptPath = await saveTranscript(html, ticket.ticketId);
       
-      // Generate PDF transcript
+      // Generate PDF transcript (using PDFKit - no browser dependencies)
       try {
-        pdfPath = await generatePDFTranscript(html, ticket.ticketId);
+        pdfPath = await generatePDFTranscript(messages, ticket, interaction.guild, participants);
         logger.info(`PDF transcript generated for ticket #${ticket.ticketId}`);
       } catch (error) {
         logger.error('PDF generation failed, using HTML only:', error);

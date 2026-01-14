@@ -638,15 +638,19 @@ export async function generateTranscript(messages, ticket, guild, participants =
 }
 
 /**
- * Generate PDF transcript from HTML using html-pdf-node
- * @param {string} html - HTML content
- * @param {string} ticketId - Ticket ID
+ * Generate PDF transcript using PDFKit (no browser dependencies)
+ * @param {Array} messages - Array of message objects
+ * @param {Object} ticket - Ticket object
+ * @param {Object} guild - Discord guild
+ * @param {Object} participants - Participant metadata
  * @returns {Promise<string>} PDF file path
  */
-export async function generatePDFTranscript(html, ticketId) {
+export async function generatePDFTranscript(messages, ticket, guild, participants = {}) {
   try {
-    // Dynamic import to avoid loading html-pdf-node if not needed
-    const htmlPdf = await import('html-pdf-node');
+    // Dynamic import
+    const PDFDocument = (await import('pdfkit')).default;
+    const { createWriteStream } = await import('fs');
+    const { pipeline } = await import('stream/promises');
     
     const transcriptsDir = join(process.cwd(), 'transcripts');
     
@@ -654,29 +658,144 @@ export async function generatePDFTranscript(html, ticketId) {
       await mkdir(transcriptsDir, { recursive: true });
     }
 
-    const filename = `ticket-${ticketId}-${Date.now()}.pdf`;
+    const filename = `ticket-${ticket.ticketId}-${Date.now()}.pdf`;
     const filepath = join(transcriptsDir, filename);
 
-    // PDF generation options
-    const options = { 
-      format: 'A4',
-      margin: {
-        top: '15mm',
-        right: '15mm',
-        bottom: '15mm',
-        left: '15mm'
-      },
-      printBackground: true,
-      preferCSSPageSize: true
-    };
+    // Create PDF document
+    const doc = new PDFDocument({
+      size: 'A4',
+      margins: { top: 50, bottom: 50, left: 50, right: 50 },
+      bufferPages: true
+    });
 
-    let file = { content: html };
+    // Pipe to file
+    const stream = createWriteStream(filepath);
+    doc.pipe(stream);
+
+    // Calculate participant stats
+    const participantStats = {};
+    const participantRoles = {};
     
-    // Generate PDF
-    const pdfBuffer = await htmlPdf.default.generatePdf(file, options);
+    for (const msg of messages) {
+      const userId = msg.author.id;
+      if (!participantStats[userId]) {
+        participantStats[userId] = {
+          username: msg.author.username,
+          messageCount: 0
+        };
+      }
+      participantStats[userId].messageCount++;
+      if (participants[userId]) {
+        participantRoles[userId] = participants[userId];
+      }
+    }
+
+    // --- Header ---
+    doc.fontSize(24).fillColor('#5865f2').text(`🎫 Ticket #${ticket.ticketId}`, { underline: true });
+    doc.moveDown(0.5);
     
-    // Save to file
-    await writeFile(filepath, pdfBuffer);
+    // Metadata
+    doc.fontSize(12).fillColor('#000');
+    doc.text(`Category: ${ticket.category}`, { continued: true }).text(`     Status: ${ticket.status === 'closed' ? '🔒 Closed' : '🟢 Open'}`);
+    doc.text(`Created: ${new Date(ticket.createdAt).toLocaleString()}`);
+    doc.text(`Server: ${guild.name}`);
+    
+    // Calculate duration
+    const duration = ticket.closedAt ? 
+      Math.floor((new Date(ticket.closedAt) - new Date(ticket.createdAt)) / 1000 / 60) : 0;
+    const durationText = duration > 60 ? 
+      `${Math.floor(duration / 60)}h ${duration % 60}m` : `${duration}m`;
+    doc.text(`Duration: ${durationText}`);
+    doc.moveDown(1);
+
+    // --- Participants ---
+    doc.fontSize(16).fillColor('#5865f2').text('👥 Participants', { underline: true });
+    doc.moveDown(0.3);
+    doc.fontSize(10).fillColor('#000');
+    
+    for (const [userId, stats] of Object.entries(participantStats)) {
+      const role = participantRoles[userId] || 'User';
+      doc.text(`• ${stats.username} (${role}) - ${stats.messageCount} messages`);
+    }
+    doc.moveDown(1);
+
+    // --- Timeline ---
+    doc.fontSize(16).fillColor('#5865f2').text('📅 Timeline', { underline: true });
+    doc.moveDown(0.3);
+    doc.fontSize(10).fillColor('#000');
+    
+    const opener = participantStats[ticket.userId];
+    doc.text(`📂 Opened by ${opener?.username || 'Unknown'} on ${new Date(ticket.createdAt).toLocaleString()}`);
+    
+    if (ticket.claimedBy && ticket.claimedAt) {
+      const claimer = participantStats[ticket.claimedBy];
+      doc.text(`✋ Claimed by ${claimer?.username || 'Unknown'} on ${new Date(ticket.claimedAt).toLocaleString()}`);
+    }
+    
+    if (ticket.closedBy && ticket.closedAt) {
+      const closer = participantStats[ticket.closedBy];
+      doc.text(`🔒 Closed by ${closer?.username || 'Unknown'} on ${new Date(ticket.closedAt).toLocaleString()}`);
+    }
+    doc.moveDown(1);
+
+    // --- Closing Note ---
+    if (ticket.closingNote) {
+      const noteAuthor = participantStats[ticket.closingNoteBy];
+      doc.fontSize(16).fillColor('#5865f2').text('📝 Closing Note', { underline: true });
+      doc.moveDown(0.3);
+      doc.fontSize(10).fillColor('#000');
+      doc.text(`By: ${noteAuthor?.username || 'Unknown'} (${participantRoles[ticket.closingNoteBy] || 'Staff'})`);
+      doc.fontSize(10).fillColor('#333');
+      doc.text(ticket.closingNote, { align: 'left', indent: 10 });
+      doc.moveDown(1);
+    }
+
+    // --- Messages ---
+    doc.fontSize(16).fillColor('#5865f2').text(`💬 Conversation (${messages.length} messages)`, { underline: true });
+    doc.moveDown(0.5);
+
+    for (const msg of messages) {
+      // Check if we need a new page
+      if (doc.y > 700) {
+        doc.addPage();
+      }
+
+      const role = participantRoles[msg.author.id] || 'User';
+      const timestamp = new Date(msg.createdTimestamp).toLocaleString();
+      
+      // Author header
+      doc.fontSize(11).fillColor('#5865f2').text(msg.author.username, { continued: true });
+      doc.fontSize(9).fillColor('#888').text(` [${role}] - ${timestamp}`);
+      
+      // Message content
+      doc.fontSize(10).fillColor('#000');
+      doc.text(msg.content || '*No content*', { indent: 10 });
+      
+      // Attachments
+      if (msg.attachments.size > 0) {
+        doc.fontSize(9).fillColor('#666');
+        for (const att of msg.attachments.values()) {
+          doc.text(`  📎 ${att.name}: ${att.url}`, { link: att.url, indent: 10 });
+        }
+      }
+      
+      doc.moveDown(0.5);
+    }
+
+    // --- Footer ---
+    doc.fontSize(9).fillColor('#888').text(`Generated: ${new Date().toLocaleString()}`, {
+      align: 'center'
+    });
+    doc.text('Discord Ticket Bot', { align: 'center' });
+
+    // Finalize PDF
+    doc.end();
+
+    // Wait for write to complete
+    await new Promise((resolve, reject) => {
+      stream.on('finish', resolve);
+      stream.on('error', reject);
+    });
 
     logger.info(`PDF transcript generated: ${filename}`);
     return filepath;
