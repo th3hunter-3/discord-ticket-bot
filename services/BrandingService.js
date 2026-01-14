@@ -216,7 +216,36 @@ class BrandingService {
     this.cache.clear();
     logger.info('Branding cache cleared');
   }
+
+  /**
+   * Cleanup old cache entries to prevent memory leaks
+   */
+  cleanup() {
+    // Limit cache size to prevent memory issues
+    if (this.cache.size > 1000) {
+      logger.warn(`Branding cache too large (${this.cache.size}), clearing oldest entries`);
+      const entries = Array.from(this.cache.entries());
+      
+      // Keep only 500 most recent
+      this.cache.clear();
+      for (let i = Math.max(0, entries.length - 500); i < entries.length; i++) {
+        this.cache.set(entries[i][0], entries[i][1]);
+      }
+    }
+    
+    logger.debug(`Branding cache size: ${this.cache.size}`);
+  }
 }
 
 // Export singleton instance
 export default new BrandingService();
+
+// Run cleanup every 5 minutes
+setInterval(async () => {
+  try {
+    const branding = (await import('./BrandingService.js')).default;
+    branding.cleanup();
+  } catch (error) {
+    logger.error('Branding cache cleanup error:', error);
+  }
+}, 300000);

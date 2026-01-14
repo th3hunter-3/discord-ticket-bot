@@ -436,6 +436,7 @@ class AutoModService {
     const now = Date.now();
     const maxAge = 60000; // 1 minute
 
+    // Clean up old message tracking
     for (const [userId, messages] of this.messageTracking.entries()) {
       const recentMessages = messages.filter(timestamp => now - timestamp < maxAge);
       
@@ -445,6 +446,21 @@ class AutoModService {
         this.messageTracking.set(userId, recentMessages);
       }
     }
+
+    // If map is still too large, remove oldest entries
+    if (this.messageTracking.size > 10000) {
+      logger.warn(`AutoMod message tracking map too large (${this.messageTracking.size}), clearing oldest entries`);
+      const entries = Array.from(this.messageTracking.entries());
+      entries.sort((a, b) => Math.min(...b[1]) - Math.min(...a[1]));
+      
+      // Keep only the 5000 most recent
+      this.messageTracking.clear();
+      for (let i = 0; i < 5000 && i < entries.length; i++) {
+        this.messageTracking.set(entries[i][0], entries[i][1]);
+      }
+    }
+
+    logger.debug(`AutoMod cleanup complete. Map size: ${this.messageTracking.size}`);
   }
 }
 

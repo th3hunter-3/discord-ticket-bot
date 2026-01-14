@@ -207,6 +207,20 @@ class NukeDetector {
         this.guildActions.delete(guildId);
       }
     }
+
+    // Prevent unbounded growth
+    if (this.guildActions.size > 1000) {
+      logger.warn(`NukeDetector map too large (${this.guildActions.size}), clearing oldest entries`);
+      const entries = Array.from(this.guildActions.entries());
+      
+      // Keep only recent 500 guilds
+      this.guildActions.clear();
+      for (let i = 0; i < 500 && i < entries.length; i++) {
+        this.guildActions.set(entries[i][0], entries[i][1]);
+      }
+    }
+
+    logger.debug(`NukeDetector cleanup complete. Map size: ${this.guildActions.size}`);
   }
 }
 

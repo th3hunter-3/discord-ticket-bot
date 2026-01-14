@@ -20,7 +20,7 @@ import Ticket from '../models/Ticket.js';
 import GuildConfig from '../models/GuildConfig.js';
 import Blacklist from '../models/Blacklist.js';
 import rateLimiter from './rateLimiter.js';
-import { generateTranscript, saveTranscript } from './transcript.js';
+import { generateTranscript, saveTranscript, generatePDFTranscript } from './transcript.js';
 import { sanitizeInput } from './sanitizer.js';
 import config from '../config.js';
 
@@ -536,11 +536,21 @@ export async function closeTicket(interaction, ticket, guildConfig) {
 
     // Generate transcript
     let transcriptPath = null;
+    let pdfPath = null;
     if (guildConfig.transcriptEnabled) {
       const html = await generateTranscript(messages, ticket, interaction.guild);
       transcriptPath = await saveTranscript(html, ticket.ticketId);
+      
+      // Generate PDF transcript
+      try {
+        pdfPath = await generatePDFTranscript(html, ticket.ticketId);
+        logger.info(`PDF transcript generated for ticket #${ticket.ticketId}`);
+      } catch (error) {
+        logger.error('PDF generation failed, using HTML only:', error);
+        pdfPath = null;
+      }
 
-      // Send transcript to log channel
+      // Send transcript to log channel (prefer PDF, fallback to HTML)
       if (guildConfig.transcriptLogChannelId) {
         try {
           const logChannel = await interaction.guild.channels.fetch(guildConfig.transcriptLogChannelId);
@@ -557,16 +567,24 @@ export async function closeTicket(interaction, ticket, guildConfig) {
               { name: 'Closed', value: `<t:${Math.floor(Date.now() / 1000)}:R>`, inline: true }
             );
 
+          const files = [];
+          if (pdfPath) {
+            files.push({ attachment: pdfPath, name: `ticket-${ticket.ticketId}.pdf` });
+          }
+          if (transcriptPath) {
+            files.push({ attachment: transcriptPath, name: `ticket-${ticket.ticketId}.html` });
+          }
+
           await logChannel.send({
             embeds: [logEmbed],
-            files: [{ attachment: transcriptPath, name: `ticket-${ticket.ticketId}.html` }]
+            files
           });
         } catch (error) {
           logger.error('Error sending transcript to log channel:', error);
         }
       }
 
-      // DM transcript to user
+      // DM transcript to user (prefer PDF, fallback to HTML)
       if (guildConfig.dmTranscriptEnabled) {
         try {
           const user = await interaction.client.users.fetch(ticket.userId);
@@ -574,16 +592,24 @@ export async function closeTicket(interaction, ticket, guildConfig) {
           const dmEmbed = new EmbedBuilder()
             .setColor(config.colors.primary)
             .setTitle(`${config.emojis.transcript} Ticket #${ticket.ticketId} - Transcript`)
-            .setDescription(`Your ticket has been closed. Here is a transcript of the conversation.`)
+            .setDescription(`Your ticket has been closed. Here is a ${pdfPath ? 'PDF' : 'HTML'} transcript of the conversation.`)
             .addFields(
               { name: 'Server', value: interaction.guild.name, inline: true },
-              { name: 'Category', value: ticket.category, inline: true }
+              { name: 'Category', value: ticket.category, inline: true },
+              { name: 'Format', value: pdfPath ? '📄 PDF' : '📝 HTML', inline: true }
             )
             .setTimestamp();
 
+          const files = [];
+          if (pdfPath) {
+            files.push({ attachment: pdfPath, name: `ticket-${ticket.ticketId}.pdf` });
+          } else if (transcriptPath) {
+            files.push({ attachment: transcriptPath, name: `ticket-${ticket.ticketId}.html` });
+          }
+
           await user.send({
             embeds: [dmEmbed],
-            files: [{ attachment: transcriptPath, name: `ticket-${ticket.ticketId}.html` }]
+            files
           });
         } catch (error) {
           logger.error('Error DMing transcript to user:', error);
@@ -595,7 +621,7 @@ export async function closeTicket(interaction, ticket, guildConfig) {
     ticket.status = 'closed';
     ticket.closedAt = new Date();
     ticket.closedBy = interaction.user.id;
-    ticket.transcriptUrl = transcriptPath;
+    ticket.transcriptUrl = pdfPath || transcriptPath;
     await ticket.save();
 
     // Delete channel after delay
