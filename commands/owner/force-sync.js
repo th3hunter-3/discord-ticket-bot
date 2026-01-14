@@ -6,7 +6,7 @@
  */
 
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
-import { synchronizeTickets } from '../../services/StartupService.js';
+import startupService from '../../services/StartupService.js';
 import logger from '../../utils/logger.js';
 
 export default {
@@ -30,26 +30,26 @@ export default {
       logger.info(`Force sync triggered by ${interaction.user.tag}`);
       
       // Run synchronization
-      const result = await synchronizeTickets(interaction.client);
+      await startupService.synchronizeTickets(interaction.client);
+      
+      // Get results from the service
+      const ticketResults = startupService.syncResults.tickets;
       
       const embed = new EmbedBuilder()
         .setTitle('🔄 Ticket Synchronization Complete')
         .setDescription('Finished synchronizing all tickets across guilds.')
         .addFields(
-          { name: '✅ Synced', value: result.synced.toString(), inline: true },
-          { name: '🗑️ Orphaned', value: result.orphaned.toString(), inline: true },
-          { name: '🔧 Repaired', value: result.repaired.toString(), inline: true },
-          { name: '❌ Errors', value: result.errors.toString(), inline: true }
+          { name: '✅ Synced', value: ticketResults.synced.toString(), inline: true },
+          { name: '🗑️ Orphaned', value: ticketResults.orphaned.toString(), inline: true },
+          { name: '🔧 Repaired', value: ticketResults.repaired.toString(), inline: true }
         )
-        .setColor(result.errors > 0 ? 0xFF9900 : 0x00FF00)
+        .setColor(0x00FF00)
         .setTimestamp();
       
-      if (result.details && result.details.length > 0) {
-        const details = result.details.slice(0, 5).join('\n');
-        embed.addFields({ name: 'Details', value: details.substring(0, 1024) });
-      }
-      
       await interaction.editReply({ embeds: [embed] });
+      
+      // Reset results for next sync
+      startupService.syncResults.tickets = { synced: 0, orphaned: 0, repaired: 0 };
       
     } catch (error) {
       logger.error('Error in force-sync command:', error);
