@@ -3,10 +3,15 @@
  * Close the current ticket
  */
 
-import { SlashCommandBuilder } from 'discord.js';
+import { 
+  SlashCommandBuilder, 
+  ModalBuilder, 
+  TextInputBuilder, 
+  TextInputStyle, 
+  ActionRowBuilder 
+} from 'discord.js';
 import Ticket from '../../models/Ticket.js';
 import GuildConfig from '../../models/GuildConfig.js';
-import { closeTicket } from '../../utils/ticketHandler.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -43,6 +48,22 @@ export default {
       });
     }
 
-    await closeTicket(interaction, ticket, guildConfig);
+    // Show modal for closing note
+    const modal = new ModalBuilder()
+      .setCustomId('close_note_modal')
+      .setTitle('Close Ticket');
+
+    const noteInput = new TextInputBuilder()
+      .setCustomId('closing_note')
+      .setLabel('Closing Note (Optional)')
+      .setPlaceholder('Add any final notes or resolution summary...')
+      .setStyle(TextInputStyle.Paragraph)
+      .setMaxLength(1000)
+      .setRequired(false);
+
+    const row = new ActionRowBuilder().addComponents(noteInput);
+    modal.addComponents(row);
+
+    await interaction.showModal(modal);
   }
 };

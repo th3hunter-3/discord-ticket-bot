@@ -315,6 +315,20 @@ async function createTicket(interaction, category) {
  */
 export async function createModmailTicket(message, guild, guildConfig) {
   try {
+    // Check rate limit
+    if (guildConfig.rateLimitEnabled) {
+      const rateLimit = rateLimiter.check(
+        message.author.id,
+        guildConfig.rateLimitMax,
+        guildConfig.rateLimitWindow
+      );
+
+      if (rateLimit.limited) {
+        const resetTime = Math.floor(rateLimit.resetAt.getTime() / 1000);
+        return await message.reply(`❌ You are creating tickets too quickly. Please try again <t:${resetTime}:R>.`);
+      }
+    }
+
     // Get next ticket ID
     const ticketId = await Ticket.getNextTicketId(guild.id);
 
@@ -435,14 +449,65 @@ export async function handleCloseButton(interaction) {
       });
     }
 
-    await closeTicket(interaction, ticket, guildConfig);
+    // Show modal for closing note
+    const modal = new ModalBuilder()
+      .setCustomId('close_note_modal')
+      .setTitle('Close Ticket');
+
+    const noteInput = new TextInputBuilder()
+      .setCustomId('closing_note')
+      .setLabel('Closing Note (Optional)')
+      .setPlaceholder('Add any final notes or resolution summary...')
+      .setStyle(TextInputStyle.Paragraph)
+      .setMaxLength(1000)
+      .setRequired(false);
+
+    const row = new ActionRowBuilder().addComponents(noteInput);
+    modal.addComponents(row);
+
+    await interaction.showModal(modal);
 
   } catch (error) {
     logger.error('Error handling close button:', error);
     await interaction.reply({
       content: '❌ An error occurred while closing the ticket.',
       ephemeral: true
-    });
+    }).catch(() => {});
+  }
+}
+
+/**
+ * Handle close note modal
+ * @param {ModalSubmitInteraction} interaction - Modal interaction
+ */
+export async function handleCloseNoteModal(interaction) {
+  try {
+    const ticket = await Ticket.getByChannelId(interaction.channel.id);
+
+    if (!ticket) {
+      return await interaction.reply({
+        content: '❌ This is not a valid ticket channel.',
+        ephemeral: true
+      });
+    }
+
+    const guildConfig = await GuildConfig.getConfig(interaction.guild.id);
+    const closingNote = interaction.fields.getTextInputValue('closing_note') || null;
+
+    // Store closing note if provided
+    if (closingNote && closingNote.trim()) {
+      ticket.closingNote = sanitizeInput(closingNote.trim());
+      ticket.closingNoteBy = interaction.user.id;
+    }
+
+    await closeTicket(interaction, ticket, guildConfig);
+
+  } catch (error) {
+    logger.error('Error handling close note modal:', error);
+    await interaction.reply({
+      content: '❌ An error occurred while closing the ticket.',
+      ephemeral: true
+    }).catch(() => {});
   }
 }
 
@@ -534,11 +599,33 @@ export async function closeTicket(interaction, ticket, guildConfig) {
 
     messages.reverse();
 
+    // Collect participant metadata (roles)
+    const participants = {};
+    const ownerIds = process.env.OWNER_IDS?.split(',') || [];
+    
+    for (const msg of messages) {
+      const userId = msg.author.id;
+      if (!participants[userId] && !msg.author.bot) {
+        const member = await interaction.guild.members.fetch(userId).catch(() => null);
+        
+        // Determine role priority: Owner > Admin > Staff > User
+        if (ownerIds.includes(userId)) {
+          participants[userId] = 'Owner';
+        } else if (member && guildConfig.adminRoleId && member.roles.cache.has(guildConfig.adminRoleId)) {
+          participants[userId] = 'Admin';
+        } else if (member && guildConfig.staffRoleId && member.roles.cache.has(guildConfig.staffRoleId)) {
+          participants[userId] = 'Staff';
+        } else {
+          participants[userId] = 'User';
+        }
+      }
+    }
+
     // Generate transcript
     let transcriptPath = null;
     let pdfPath = null;
     if (guildConfig.transcriptEnabled) {
-      const html = await generateTranscript(messages, ticket, interaction.guild);
+      const html = await generateTranscript(messages, ticket, interaction.guild, participants);
       transcriptPath = await saveTranscript(html, ticket.ticketId);
       
       // Generate PDF transcript
@@ -550,7 +637,7 @@ export async function closeTicket(interaction, ticket, guildConfig) {
         pdfPath = null;
       }
 
-      // Send transcript to log channel (prefer PDF, fallback to HTML)
+      // Send transcript to log channel (PDF only)
       if (guildConfig.transcriptLogChannelId) {
         try {
           const logChannel = await interaction.guild.channels.fetch(guildConfig.transcriptLogChannelId);
@@ -567,12 +654,13 @@ export async function closeTicket(interaction, ticket, guildConfig) {
               { name: 'Closed', value: `<t:${Math.floor(Date.now() / 1000)}:R>`, inline: true }
             );
 
+          if (ticket.closingNote) {
+            logEmbed.addFields({ name: '📝 Closing Note', value: ticket.closingNote.substring(0, 1024) });
+          }
+
           const files = [];
           if (pdfPath) {
             files.push({ attachment: pdfPath, name: `ticket-${ticket.ticketId}.pdf` });
-          }
-          if (transcriptPath) {
-            files.push({ attachment: transcriptPath, name: `ticket-${ticket.ticketId}.html` });
           }
 
           await logChannel.send({
@@ -584,7 +672,7 @@ export async function closeTicket(interaction, ticket, guildConfig) {
         }
       }
 
-      // DM transcript to user (prefer PDF, fallback to HTML)
+      // DM transcript to user (PDF only)
       if (guildConfig.dmTranscriptEnabled) {
         try {
           const user = await interaction.client.users.fetch(ticket.userId);
@@ -592,25 +680,29 @@ export async function closeTicket(interaction, ticket, guildConfig) {
           const dmEmbed = new EmbedBuilder()
             .setColor(config.colors.primary)
             .setTitle(`${config.emojis.transcript} Ticket #${ticket.ticketId} - Transcript`)
-            .setDescription(`Your ticket has been closed. Here is a ${pdfPath ? 'PDF' : 'HTML'} transcript of the conversation.`)
+            .setDescription('Your ticket has been closed. Here is a PDF transcript of the conversation.')
             .addFields(
               { name: 'Server', value: interaction.guild.name, inline: true },
               { name: 'Category', value: ticket.category, inline: true },
-              { name: 'Format', value: pdfPath ? '📄 PDF' : '📝 HTML', inline: true }
+              { name: 'Format', value: '📄 PDF', inline: true }
             )
             .setTimestamp();
+
+          if (ticket.closingNote) {
+            dmEmbed.addFields({ name: '📝 Closing Note', value: ticket.closingNote.substring(0, 1024) });
+          }
 
           const files = [];
           if (pdfPath) {
             files.push({ attachment: pdfPath, name: `ticket-${ticket.ticketId}.pdf` });
-          } else if (transcriptPath) {
-            files.push({ attachment: transcriptPath, name: `ticket-${ticket.ticketId}.html` });
           }
 
-          await user.send({
-            embeds: [dmEmbed],
-            files
-          });
+          if (files.length > 0) {
+            await user.send({
+              embeds: [dmEmbed],
+              files
+            });
+          }
         } catch (error) {
           logger.error('Error DMing transcript to user:', error);
         }

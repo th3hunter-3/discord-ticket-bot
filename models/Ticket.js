@@ -90,6 +90,14 @@ const ticketSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  closingNote: {
+    type: String,
+    default: null
+  },
+  closingNoteBy: {
+    type: String,
+    default: null
+  },
   
   // Transcript
   transcriptUrl: {

@@ -150,6 +150,11 @@ async function handleModal(interaction) {
         const { handleTicketModal } = await import('../utils/ticketHandler.js');
         await handleTicketModal(interaction, args);
         break;
+      
+      case 'close':
+        const { handleCloseNoteModal } = await import('../utils/ticketHandler.js');
+        await handleCloseNoteModal(interaction, args);
+        break;
         
       default:
         logger.warn(`Unknown modal action: ${action}`);

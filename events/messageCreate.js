@@ -124,6 +124,20 @@ async function handleModmail(message) {
         await message.reply('✅ Your message has been sent to the staff team.');
       }
     } else {
+      // Check rate limit before creating new modmail ticket
+      if (guildConfig.rateLimitEnabled) {
+        const rateLimit = rateLimiter.check(
+          message.author.id,
+          guildConfig.rateLimitMax,
+          guildConfig.rateLimitWindow
+        );
+
+        if (rateLimit.limited) {
+          const resetTime = Math.floor(rateLimit.resetAt.getTime() / 1000);
+          return await message.reply(`❌ You are creating tickets too quickly. Please try again <t:${resetTime}:R>.`);
+        }
+      }
+
       // Create new modmail ticket
       await message.reply('📬 Opening a new ticket...');
       

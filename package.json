@@ -37,7 +37,7 @@
     "dotenv": "^16.3.1",
     "winston": "^3.11.0",
     "html-entities": "^2.5.2",
-    "puppeteer": "^21.6.1"
+    "html-pdf-node": "^1.0.8"
   },
   "engines": {
     "node": ">=18.0.0"
