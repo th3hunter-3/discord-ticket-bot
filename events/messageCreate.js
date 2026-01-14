@@ -59,16 +59,25 @@ async function handleModmail(message) {
     const client = message.client;
     
     // Get all guilds the bot and user share
-    const mutualGuilds = client.guilds.cache.filter(guild => 
-      guild.members.cache.has(message.author.id)
-    );
+    // Use fetch instead of cache to ensure we get accurate member data
+    const mutualGuilds = [];
+    for (const [guildId, guild] of client.guilds.cache) {
+      try {
+        // Try to fetch the member from this guild
+        await guild.members.fetch(message.author.id);
+        mutualGuilds.push(guild);
+      } catch (error) {
+        // User is not in this guild, continue
+        continue;
+      }
+    }
 
-    if (mutualGuilds.size === 0) {
+    if (mutualGuilds.length === 0) {
       return await message.reply('❌ You must be in a server with me to use modmail.');
     }
 
     // For simplicity, use the first mutual guild
-    const guild = mutualGuilds.first();
+    const guild = mutualGuilds[0];
     const guildConfig = await GuildConfig.getConfig(guild.id);
 
     // Check if modmail is enabled
