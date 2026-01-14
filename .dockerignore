@@ -1,0 +1,50 @@
+# Dependencies
+node_modules
+npm-debug.log
+package-lock.json
+yarn.lock
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Git
+.git
+.gitignore
+.github
+
+# Documentation
+*.md
+!README.md
+
+# Logs
+logs
+*.log
+
+# Transcripts
+transcripts
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+test
+tests
+coverage
+
+# Build artifacts
+dist
+build
+
+# Temporary files
+tmp
+temp
+*.tmp

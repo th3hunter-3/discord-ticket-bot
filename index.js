@@ -17,19 +17,28 @@ import logger from './utils/logger.js';
 import { loadCommands } from './handlers/commandHandler.js';
 import { loadEvents } from './handlers/eventHandler.js';
 import { connectDatabase } from './models/database.js';
+import { validateEnvironment, validateOwnerIds, validateConfig, getEnvironmentInfo } from './utils/validator.js';
 import config from './config.js';
 
 // Load environment variables
 dotenvConfig();
 
-// Validate required environment variables
-const requiredEnvVars = ['DISCORD_TOKEN', 'CLIENT_ID', 'MONGODB_URI'];
-for (const envVar of requiredEnvVars) {
-  if (!process.env[envVar]) {
-    logger.error(`Missing required environment variable: ${envVar}`);
-    process.exit(1);
-  }
+// Validate environment and configuration
+if (!validateEnvironment()) {
+  process.exit(1);
 }
+
+if (!validateOwnerIds()) {
+  process.exit(1);
+}
+
+if (!validateConfig(config)) {
+  process.exit(1);
+}
+
+// Log environment info
+const envInfo = getEnvironmentInfo();
+logger.info('Environment:', envInfo);
 
 // Create Discord client
 const client = new Client({

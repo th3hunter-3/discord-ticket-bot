@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:7
+    container_name: ticket-bot-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: your_secure_password_here
+      MONGO_INITDB_DATABASE: discord-ticket-bot
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
+    networks:
+      - ticket-bot-network
+
+  bot:
+    build: .
+    container_name: ticket-bot
+    restart: unless-stopped
+    depends_on:
+      - mongodb
+    environment:
+      - NODE_ENV=production
+    env_file:
+      - .env
+    volumes:
+      - ./logs:/app/logs
+      - ./transcripts:/app/transcripts
+    networks:
+      - ticket-bot-network
+
+volumes:
+  mongodb_data:
+    driver: local
+  mongodb_config:
+    driver: local
+
+networks:
+  ticket-bot-network:
+    driver: bridge
