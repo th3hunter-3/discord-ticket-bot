@@ -6,7 +6,11 @@
 import logger from '../utils/logger.js';
 import { hasPermission } from '../handlers/commandHandler.js';
 import guildWhitelist from '../middleware/GuildWhitelist.js';
+import rateLimiter from '../middleware/RateLimiter.js';
+import permissionValidator from '../middleware/PermissionValidator.js';
+import { isMaintenanceMode, getMaintenanceReason } from '../commands/owner/maintenance.js';
 import healthMonitor from '../services/HealthMonitor.js';
+import GuildConfig from '../models/GuildConfig.js';
 import config from '../config.js';
 
 export default {
@@ -60,12 +64,45 @@ async function handleCommand(interaction) {
   }
 
   try {
-    logger.info(`Command executed: ${interaction.commandName} by ${interaction.user.tag} in ${interaction.guild?.name || 'DM'}`);
+    // Check maintenance mode (owner bypass)
+    const ownerIds = process.env.OWNER_IDS?.split(',') || [];
+    if (isMaintenanceMode() && !ownerIds.includes(interaction.user.id)) {
+      return await interaction.reply({
+        content: `🔒 **Maintenance Mode**\n${getMaintenanceReason()}\n\nThe bot is currently unavailable. Please try again later.`,
+        ephemeral: true
+      });
+    }
+
+    // Get guild config for permission validation
+    let guildConfig = null;
+    if (interaction.guild) {
+      guildConfig = await GuildConfig.findOne({ guildId: interaction.guild.id });
+    }
+
+    // Permission validation
+    const permCheck = permissionValidator.validateCommand(interaction, guildConfig);
+    if (!permCheck.allowed) {
+      return await interaction.reply({
+        content: permCheck.reason,
+        ephemeral: true
+      });
+    }
+
+    // Rate limiting
+    const rateCheck = rateLimiter.checkCommandLimit(interaction, permCheck.level);
+    if (!rateCheck.allowed) {
+      return await interaction.reply({
+        content: rateCheck.reason,
+        ephemeral: true
+      });
+    }
+
+    logger.info(`Command executed: ${interaction.commandName} by ${interaction.user.tag} (${permCheck.level}) in ${interaction.guild?.name || 'DM'}`);
 
     // Record command execution
     healthMonitor.recordCommand();
 
-    // Check permissions if required
+    // Check old permission system if required
     if (command.permissions && !hasPermission(interaction, command.permissions)) {
       return await interaction.reply({
         content: '❌ You do not have permission to use this command.',

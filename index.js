@@ -18,6 +18,7 @@ import { loadCommands } from './handlers/commandHandler.js';
 import { loadEvents } from './handlers/eventHandler.js';
 import { connectDatabase } from './models/database.js';
 import { validateEnvironment, validateOwnerIds, validateConfig, getEnvironmentInfo } from './utils/validator.js';
+import { performStartupChecks } from './services/StartupService.js';
 import config from './config.js';
 
 // Load environment variables
@@ -40,6 +41,36 @@ if (!validateConfig(config)) {
 const envInfo = getEnvironmentInfo();
 logger.info('Environment:', envInfo);
 
+// Performance monitoring
+let eventLoopLag = 0;
+setInterval(() => {
+  const start = process.hrtime.bigint();
+  setImmediate(() => {
+    const lag = Number(process.hrtime.bigint() - start) / 1e6; // Convert to milliseconds
+    eventLoopLag = lag;
+    if (lag > 100) {
+      logger.warn(`Event loop lag detected: ${lag.toFixed(2)}ms`);
+    }
+  });
+}, 5000);
+
+// Memory monitoring
+setInterval(() => {
+  const usage = process.memoryUsage();
+  const heapPercent = (usage.heapUsed / usage.heapTotal) * 100;
+  
+  if (heapPercent > 90) {
+    logger.error(`High memory usage: ${heapPercent.toFixed(2)}% (${(usage.heapUsed / 1024 / 1024).toFixed(2)}MB / ${(usage.heapTotal / 1024 / 1024).toFixed(2)}MB)`);
+    // Trigger garbage collection if available
+    if (global.gc) {
+      logger.info('Triggering manual garbage collection...');
+      global.gc();
+    }
+  } else if (heapPercent > 80) {
+    logger.warn(`Memory usage high: ${heapPercent.toFixed(2)}%`);
+  }
+}, 30000); // Every 30 seconds
+
 // Create Discord client
 const client = new Client({
   intents: [
@@ -58,6 +89,13 @@ const client = new Client({
 // Initialize collections
 client.commands = new Collection();
 client.config = config;
+
+// Add performance metrics to client
+client.getPerformanceMetrics = () => ({
+  eventLoopLag,
+  memory: process.memoryUsage(),
+  uptime: process.uptime()
+});
 
 /**
  * Global error handlers
@@ -142,7 +180,7 @@ process.on('SIGINT', () => shutdown('SIGINT'));
  */
 async function init() {
   try {
-    logger.info('Starting Discord Ticket Bot...');
+    logger.info('Starting Discord Ticket Bot v2.0.0 - Enterprise Edition...');
     
     // Connect to database
     await connectDatabase();
@@ -155,6 +193,17 @@ async function init() {
     
     // Login to Discord
     await client.login(process.env.DISCORD_TOKEN);
+    
+    // Wait for client to be ready
+    await new Promise(resolve => {
+      client.once('ready', resolve);
+    });
+    
+    // Perform startup checks and synchronization
+    logger.info('🔍 Performing startup health checks and synchronization...');
+    await performStartupChecks(client);
+    
+    logger.info('✅ Bot fully initialized and operational!');
     
   } catch (error) {
     logger.error('Failed to initialize bot:', error);
