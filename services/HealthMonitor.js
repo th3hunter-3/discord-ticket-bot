@@ -273,7 +273,7 @@ class HealthMonitor {
 export default new HealthMonitor();
 
 // Update system metrics every 30 seconds
-setInterval(() => {
+setInterval(async () => {
   try {
     const monitor = (await import('./HealthMonitor.js')).default;
     monitor.updateSystemMetrics();

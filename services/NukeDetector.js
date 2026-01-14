@@ -214,7 +214,7 @@ class NukeDetector {
 export default new NukeDetector();
 
 // Run cleanup every minute
-setInterval(() => {
+setInterval(async () => {
   try {
     const detector = (await import('./NukeDetector.js')).default;
     detector.cleanup();

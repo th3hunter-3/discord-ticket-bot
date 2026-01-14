@@ -452,7 +452,7 @@ class AutoModService {
 export default new AutoModService();
 
 // Run cleanup every 30 seconds
-setInterval(() => {
+setInterval(async () => {
   try {
     const autoMod = (await import('./AutoModService.js')).default;
     autoMod.cleanup();

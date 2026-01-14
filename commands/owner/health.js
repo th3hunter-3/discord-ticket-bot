@@ -15,7 +15,7 @@ export default {
    * Execute health command
    * @param {CommandInteraction} interaction - Command interaction
    */
-  async execute(interaction) {
+  execute: async function(interaction) {
     // Check if user is owner
     const ownerIds = process.env.OWNER_IDS?.split(',') || [];
     if (!ownerIds.includes(interaction.user.id)) {
