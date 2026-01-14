@@ -1,6 +1,6 @@
 # 🎫 Discord Ticket Bot
 
-A sophisticated, production-ready, open-source Discord Ticket Bot with modmail support, built with Node.js v18+ and Discord.js v14.
+A sophisticated, production-ready, open-source Discord Ticket Bot with modmail support, auto-moderation, and anti-raid protection, built with Node.js v18+ and Discord.js v14.
 
 ## ✨ Features
 
@@ -14,20 +14,43 @@ A sophisticated, production-ready, open-source Discord Ticket Bot with modmail s
 - **Rate Limiting**: Prevent spam and abuse
 - **Lockdown Mode**: Disable ticket creation during maintenance
 
-### Security Features
-- Input sanitization (XSS prevention)
-- MongoDB injection prevention
-- Rate limiting per user
-- Permission-based command system
-- Blacklist system
+### 🛡️ Advanced Security Features
+- **Auto-Moderation**: Smart content filtering with multiple filters
+  - Invite detection and blocking
+  - Link filtering with whitelist support
+  - Mention spam protection
+  - Message spam detection
+  - Excessive caps detection
+  - Bad word filtering
+  - Zalgo text detection
+- **Anti-Nuke Protection**: Detect and prevent mass deletion/ban attacks
+  - Automatic permission revocation
+  - Auto-lockdown on detection
+  - Real-time monitoring and alerts
+- **Guild Whitelist**: Restrict bot to authorized servers only
+- **Input Sanitization**: XSS and injection prevention
+- **MongoDB Injection Prevention**: Query sanitization
+- **Permission-Based Commands**: Role-based access control
+
+### 🎨 Customization Features
+- **White-label Branding**: Per-guild customization
+- **Custom Colors**: Configurable embed colors
+- **Custom Emojis**: Personalized emoji sets
+- **Custom Messages**: Branded welcome and notification messages
+
+### 📊 Monitoring Features
+- **Health Monitoring**: System metrics and health checks
+- **Performance Tracking**: Command, ticket, and action metrics
+- **Real-time Alerts**: Proactive issue detection
+- **Resource Monitoring**: Memory and uptime tracking
 
 ### Developer Features
-- Modular architecture
-- Dynamic command loading
-- Professional logging with Winston
-- MongoDB persistence
-- Comprehensive error handling
-- Debug mode
+- **Modular Architecture**: Service-oriented design
+- **Dynamic Command Loading**: Auto-load from subfolders
+- **Professional Logging**: Winston with file rotation
+- **MongoDB Persistence**: Robust data storage
+- **Comprehensive Error Handling**: Self-healing capabilities
+- **Debug Mode**: Detailed debugging information
 
 ## 📋 Requirements
 
@@ -156,25 +179,42 @@ npm run dev
 - `/lockdown enable [reason]` - Enable lockdown mode
 - `/lockdown disable` - Disable lockdown mode
 - `/lockdown status` - Check lockdown status
+- `/automod enable <log-channel>` - Enable auto-moderation
+- `/automod disable` - Disable auto-moderation
+- `/automod config <filter> <enabled>` - Configure auto-mod filters
+- `/automod status` - View auto-mod configuration
 
 ### 👑 Owner Commands
 - `/eval <code>` - Evaluate JavaScript (dangerous)
 - `/restart` - Restart the bot
 - `/reload-commands` - Reload all commands
+- `/whitelist add <guild-id>` - Add guild to whitelist
+- `/whitelist remove <guild-id>` - Remove guild from whitelist
+- `/whitelist list` - List whitelisted guilds
+- `/whitelist mode <mode>` - Set whitelist mode (strict/open)
+- `/health` - View bot health and metrics
 
 ## 🏗️ Architecture
 
 ```
 discord-ticket-bot/
 ├── commands/           # Slash commands
-│   ├── admin/         # Admin commands
-│   ├── owner/         # Owner-only commands
-│   ├── staff/         # Staff commands
-│   └── user/          # User commands
+│   ├── admin/         # Admin commands (9)
+│   ├── owner/         # Owner-only commands (5)
+│   ├── staff/         # Staff commands (4)
+│   └── user/          # User commands (3)
+├── services/          # Business logic services
+│   ├── AutoModService.js     # Auto-moderation engine
+│   ├── NukeDetector.js       # Anti-raid protection
+│   ├── HealthMonitor.js      # System monitoring
+│   └── BrandingService.js    # White-label branding
+├── middleware/        # Request middleware
+│   └── GuildWhitelist.js     # Guild access control
 ├── events/            # Event handlers
 │   ├── ready.js
 │   ├── interactionCreate.js
-│   └── messageCreate.js
+│   ├── messageCreate.js
+│   └── guildCreate.js
 ├── handlers/          # Command/Event handlers
 │   ├── commandHandler.js
 │   └── eventHandler.js

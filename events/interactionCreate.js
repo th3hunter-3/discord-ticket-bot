@@ -5,6 +5,8 @@
 
 import logger from '../utils/logger.js';
 import { hasPermission } from '../handlers/commandHandler.js';
+import guildWhitelist from '../middleware/GuildWhitelist.js';
+import healthMonitor from '../services/HealthMonitor.js';
 import config from '../config.js';
 
 export default {
@@ -15,6 +17,14 @@ export default {
    * @param {Interaction} interaction - Discord interaction
    */
   async execute(interaction) {
+    // Check whitelist for guild commands
+    if (interaction.guild && !guildWhitelist.isWhitelisted(interaction.guild.id)) {
+      if (interaction.isChatInputCommand()) {
+        const allowed = await guildWhitelist.checkCommand(interaction);
+        if (!allowed) return;
+      }
+    }
+
     // Handle slash commands
     if (interaction.isChatInputCommand()) {
       await handleCommand(interaction);
@@ -52,6 +62,9 @@ async function handleCommand(interaction) {
   try {
     logger.info(`Command executed: ${interaction.commandName} by ${interaction.user.tag} in ${interaction.guild?.name || 'DM'}`);
 
+    // Record command execution
+    healthMonitor.recordCommand();
+
     // Check permissions if required
     if (command.permissions && !hasPermission(interaction, command.permissions)) {
       return await interaction.reply({
@@ -65,6 +78,7 @@ async function handleCommand(interaction) {
     
   } catch (error) {
     logger.error(`Error executing command ${interaction.commandName}:`, error);
+    healthMonitor.recordError();
     
     const errorMessage = config.bot.debug 
       ? `❌ An error occurred: \`${error.message}\``

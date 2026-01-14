@@ -1,6 +1,6 @@
 /**
  * Message Create Event
- * Handles modmail DMs and ticket messages
+ * Handles modmail DMs, ticket messages, and auto-moderation
  */
 
 import logger from '../utils/logger.js';
@@ -8,6 +8,8 @@ import Ticket from '../models/Ticket.js';
 import GuildConfig from '../models/GuildConfig.js';
 import Blacklist from '../models/Blacklist.js';
 import rateLimiter from '../utils/rateLimiter.js';
+import autoMod from '../services/AutoModService.js';
+import healthMonitor from '../services/HealthMonitor.js';
 import { EmbedBuilder } from 'discord.js';
 import config from '../config.js';
 
@@ -27,8 +29,22 @@ export default {
       await handleModmail(message);
     }
     
-    // Handle ticket channel messages
+    // Handle guild messages
     else if (message.guild) {
+      // Run auto-moderation first
+      const guildConfig = await GuildConfig.getConfig(message.guild.id);
+      
+      if (guildConfig.autoMod?.enabled) {
+        const modResult = await autoMod.checkMessage(message, guildConfig);
+        
+        if (!modResult.pass) {
+          await autoMod.executeAction(message, modResult, guildConfig);
+          healthMonitor.recordAutoModAction();
+          return; // Stop processing if message violated rules
+        }
+      }
+      
+      // Handle ticket channel messages
       await handleTicketMessage(message);
     }
   }
