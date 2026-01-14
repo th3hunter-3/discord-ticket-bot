@@ -18,7 +18,7 @@ import { loadCommands } from './handlers/commandHandler.js';
 import { loadEvents } from './handlers/eventHandler.js';
 import { connectDatabase } from './models/database.js';
 import { validateEnvironment, validateOwnerIds, validateConfig, getEnvironmentInfo } from './utils/validator.js';
-import { performStartupChecks } from './services/StartupService.js';
+import startupService from './services/StartupService.js';
 import config from './config.js';
 
 // Load environment variables
@@ -201,7 +201,7 @@ async function init() {
     
     // Perform startup checks and synchronization
     logger.info('🔍 Performing startup health checks and synchronization...');
-    await performStartupChecks(client);
+    await startupService.performStartupChecks(client);
     
     logger.info('✅ Bot fully initialized and operational!');
     
