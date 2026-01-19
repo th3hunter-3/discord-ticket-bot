@@ -1,0 +1,45 @@
+{
+  "name": "discord-ticket-bot",
+  "version": "1.0.0",
+  "description": "A sophisticated, production-ready Discord Ticket Bot with modmail support",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js",
+    "deploy-commands": "node deploy-commands.js",
+    "pm2:start": "pm2 start ecosystem.config.json",
+    "pm2:stop": "pm2 stop discord-ticket-bot",
+    "pm2:restart": "pm2 restart discord-ticket-bot",
+    "pm2:logs": "pm2 logs discord-ticket-bot",
+    "docker:build": "docker-compose build",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f",
+    "check": "node --check index.js && node --check deploy-commands.js"
+  },
+  "keywords": [
+    "discord",
+    "bot",
+    "ticket",
+    "modmail",
+    "support"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/th3hunter-3/discord-ticket-bot.git"
+  },
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "mongoose": "^8.0.3",
+    "dotenv": "^16.3.1",
+    "winston": "^3.11.0",
+    "html-entities": "^2.5.2",
+    "pdfkit": "^0.14.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
